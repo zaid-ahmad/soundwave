@@ -56,7 +56,7 @@ export function AuthProvider({ children }) {
     const login = async () => {
         try {
             const redirectUri = makeRedirectUri({
-                scheme: "your-scheme",
+                scheme: "soundwave",
                 path: "spotify-auth-callback",
             });
 

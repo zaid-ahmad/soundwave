@@ -1,6 +1,7 @@
 import axios from "axios";
 
 const SPOTIFY_API_BASE_URL = "https://api.spotify.com/v1";
+const DEFAULT_LIMIT = 50;
 
 export const createSpotifyApi = (accessToken) => {
     const api = axios.create({
@@ -16,31 +17,36 @@ export const createSpotifyApi = (accessToken) => {
 
         getDevices: () => api.get("/me/player/devices"),
 
-        startPlayback: async (deviceId, uris) => {
-            try {
-                await api.put(
-                    `/me/player/play${
-                        deviceId ? `?device_id=${deviceId}` : ""
-                    }`,
-                    {
-                        uris,
-                    }
-                );
-            } catch (error) {
-                if (error.response?.status === 404) {
-                    throw new Error("No active device found");
-                }
-                throw error;
-            }
-        },
-
         // Songs
-        getUserSongs: (limit = 20, offset = 0) =>
-            api.get(`/me/tracks?limit=${limit}&offset=${offset}`),
+        getUserSongs: async (options = {}) => {
+            const {
+                limit = DEFAULT_LIMIT,
+                offset = 0,
+                transformResponse = true
+            } = options;
+
+            const response = await api.get(`/me/tracks?limit=${limit}&offset=${offset}`);
+
+            if (transformResponse) {
+                return {
+                    items: response.data.items.map(item => item.track),
+                    total: response.data.total,
+                    hasMore: (offset + limit) < response.data.total
+                };
+            }
+
+            return response.data;
+        },
 
         // Playlists
         getUserPlaylists: (limit = 20, offset = 0) =>
             api.get(`/me/playlists?limit=${limit}&offset=${offset}`),
+
+        getPlaylistDetails: (playlistId) =>
+            api.get(`/playlists/${playlistId}`),
+
+        getPlaylistTracks: (playlistId, limit = 100, offset = 0) =>
+            api.get(`/playlists/${playlistId}/tracks?limit=${limit}&offset=${offset}`),
 
         createPlaylist: (userId, name, description = "", isPublic = true) =>
             api.post(`/users/${userId}/playlists`, {
@@ -54,6 +60,13 @@ export const createSpotifyApi = (accessToken) => {
                 uris: trackUris,
             }),
 
+        removeTracksFromPlaylist: (playlistId, trackUris) =>
+            api.delete(`/playlists/${playlistId}/tracks`, {
+                data: {
+                    tracks: trackUris.map(uri => ({ uri }))
+                }
+            }),
+
         // Search
         searchTracks: (query, limit = 20, offset = 0) =>
             api.get(
@@ -63,18 +76,34 @@ export const createSpotifyApi = (accessToken) => {
             ),
 
         // Playback
-        startPlayback: (deviceId, uris) =>
+        startPlayback: (deviceId, uris, context_uri = null, offset = null) =>
             api.put(
                 `/me/player/play${deviceId ? `?device_id=${deviceId}` : ""}`,
                 {
-                    uris,
+                    ...(context_uri ? { context_uri } : {}),
+                    ...(uris ? { uris } : {}),
+                    ...(offset ? { offset } : {})
                 }
             ),
 
         pausePlayback: () => api.put("/me/player/pause"),
 
-        skipToNext: () => api.post("/me/player/next"),
+        skipToNext: (deviceId) =>
+            api.post(`/me/player/next${deviceId ? `?device_id=${deviceId}` : ""}`),
 
-        skipToPrevious: () => api.post("/me/player/previous"),
+        skipToPrevious: (deviceId) =>
+            api.post(`/me/player/previous${deviceId ? `?device_id=${deviceId}` : ""}`),
+
+        transferPlayback: (deviceId) =>
+            api.put("/me/player", {
+                device_ids: [deviceId],
+                play: true
+            }),
+
+        getCurrentlyPlaying: () =>
+            api.get("/me/player/currently-playing"),
+
+        getRecentlyPlayedContext: () =>
+            api.get("/me/player"),
     };
 };
